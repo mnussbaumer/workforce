@@ -1,0 +1,13 @@
+{application, workforce,
+ [{description, "Workforce - A pool manager to get you on the management track"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+  {licenses, ["Apache 2.0"]},
+  {links, [{"Github", "https://github.com/mnussbaumer/workforce"}]}
+ ]}.
