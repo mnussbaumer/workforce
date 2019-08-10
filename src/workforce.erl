@@ -43,12 +43,43 @@
                 }).
 
 %% exports
+%% API
 
--export([checkout/1, checkout/2, checkout/3, remote_checkout/1, remote_checkout/2, remote_checkout/3, checkin/2, state_as_map/1, async_checkout/1, async_checkout/2, async_checkout/3, async_cancel/2, async_confirm/2]).
+-export([
+
+         checkout/1,
+         checkout/2,
+         checkout/3,
+         
+         remote_checkout/1,
+         remote_checkout/2,
+         remote_checkout/3,
+         
+         async_checkout/1,
+         async_checkout/2,
+         async_checkout/3,
+         async_cancel/2,
+         async_confirm/2,
+         
+         checkin/2,
+         
+         state_as_map/1
+]).
+
+%% INTERNAL
+
 -export([start_link/1]).
 -export([init/1, callback_mode/0, handle_event/4]).
 
--export_type([name/0, workforce_config/0, checkout_error/0, checkout_resp/0, remote_resp/0]).
+%TYPES
+
+-export_type([
+              name/0,
+              workforce_config/0,
+              checkout_error/0,
+              checkout_resp/0,
+              remote_resp/0
+]).
 
 state_as_map(Pid) ->
     {State, Q_pool} = sys:get_state(Pid),
@@ -82,7 +113,7 @@ checkout(Name, Timeout, ForceEnqueue) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%% remote checkout
-%%%%%% because a network might go down when a regular checkout is made, it could mean the receive was never acknowledged by the pooler, and the `after` cancelation message that wraps that checkout wouldn't arrive either - which doesn't happen locally since it's guaranteed to always run, meaning the checked out pid would be kept as checked out, and there wouldn't be any monitoring over the remote requester either, so when issuing checkouts non-locally its advisable to use this form of checkout. This request also bypasses the pre-check for overload, since that relies on an ETS on the VM running the pooler and doesn't allow enqueuing. It will pick between local and remote checkouts depending on if it's in the same node as the workforce server, so can be used in all places if the requests may or may not come from the same node. To force it to always choose the remote pathway, use the 3 arity form specifying true as the third parameter, e.g. remote_checkout(Pid_or_Name, Timeout, true). 
+%%%%%% because a network might go down when a regular checkout is made, it could mean the receive was never acknowledged by the pooler, and the `after` cancelation message that wraps that checkout wouldn't arrive either - which doesn't happen locally since it's guaranteed to always run, meaning the checked out pid would be kept as checked out, and there wouldn't be any monitoring over the remote requester either, so when issuing checkouts non-locally its advisable to use this form of checkout. This request also bypasses the pre-check for overload, since that relies on an ETS on the VM running the pooler and doesn't allow enqueuing. It will pick between local and remote checkouts depending on if it's in the same node as the workforce server, so can be used in all places if the requests may or may not come from the same node. To force it to always choose the remote pathway, use the 3 arity form specifying force as the third parameter, e.g. remote_checkout(Pid_or_Name, Timeout, force). 
 
 -spec remote_checkout(Pid_or_name :: name())-> Resp :: remote_resp().
 -spec remote_checkout(Pid_or_name :: name(), Timeout :: timeout())-> Resp :: remote_resp().
@@ -320,7 +351,7 @@ handle_event(internal, {add_to_queue, From, ForceEnqueue}, ready, #q_pool{q_coun
 
 handle_event(internal, {add_to_queue, From, _}, _, #q_pool{ets = Ets} = CTX) ->
     ets:insert(Ets, {self(), 1}),
-    {keep_state, CTX#q_pool{overloaded = 1}, [{reply, From, overloaded}, {{timeout, overloaded}, 50, nil}]};
+    {keep_state, CTX#q_pool{overloaded = 1}, [{reply, From, overloaded}, {{timeout, overloaded}, 25, nil}]};
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%
@@ -413,7 +444,7 @@ handle_event({call, {Req_pid, _} = From}, checkout, ready,  #q_pool{pool = P, p_
     Add_actions = case Maybe_is_overloaded of
                       1 -> 
                           ets:insert(Ets, {self(), 1}),
-                          [{{timeout, overloaded}, 50, nil}];
+                          [{{timeout, overloaded}, 25, nil}];
                       0 -> []
                   end,
     
@@ -500,6 +531,9 @@ handle_event({timeout, {shrink, _} = Sterm}, _, _, #q_pool{active = A, default_w
     
     {keep_state, N_CTX, [{{timeout, Sterm}, infinity, nil}]};
 
+handle_event({timeout, {shrink, _} = Sterm}, _, _, #q_pool{active = A, default_w = Def, starting = S}) when A + S =:= Def ->
+    {keep_state_and_data, [{{timeout, Sterm}, infinity, nil}]};
+
 handle_event({timeout, {shrink, _} = Sterm}, _, _, #q_pool{shrink_timeout = St}) ->
     {keep_state_and_data, [{{timeout, Sterm}, get_shrink(1, St), nil}]};
 
@@ -510,7 +544,7 @@ handle_event({timeout, overloaded}, _, _, #q_pool{q_count = Qc, max_q = Mq, p_co
     {keep_state, CTX#q_pool{overloaded = 0}, [{{timeout, overloaded}, infinity, nil}]};
 
 handle_event({timeout, overloaded}, _, _, _) -> 
-    {keep_state_and_data, [{{timeout, overloaded}, 50, nil}]};
+    {keep_state_and_data, [{{timeout, overloaded}, 25, nil}]};
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%% monitoring events

@@ -18,7 +18,7 @@
 
 start()->
     register(tests, spawn(fun() ->
-                          workforce_supervisor:start_link(#{worker => {test_worker, start_link, []}, max_queue => 0, default_workers => 50, max_workers => 50}),
+                          workforce_supervisor:start_link(#{worker => {test_worker, start_link, []}, max_queue => 0, default_workers => 25, max_workers => 50}),
                           pbs:start_link(?POOLBOY),
                           receive
                               {exit} -> ok

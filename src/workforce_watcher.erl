@@ -1,8 +1,6 @@
 -module(workforce_watcher).
 -behaviour(gen_server).
 
--include_lib("kernel/include/logger.hrl").
-
 -include("workforce_shared.hrl").
 
 -export([start_link/1, init/1, terminate/2, handle_continue/2, handle_call/3, handle_info/2, handle_cast/2]).
