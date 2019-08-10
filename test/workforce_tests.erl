@@ -50,6 +50,7 @@
 
 workforce_test_() ->
     [
+     {"Turn off logs", fun() -> logger:add_handler_filter(default, ?MODULE, {fun(_,_) -> stop end, nostate}) end},
      {foreach,
       fun() -> basic_setup(?CONFIG) end,
       tear_down(),
@@ -300,7 +301,7 @@ ensure_watcher_keeps_track({#{default_workers := Def_w}, _, Watcher_pid, Pool_pi
                                    )
                         ),
             Workers2 = gen_server:call(Watcher_pid, get_workers),
-            ?assert(length(Workers) =:= Def_w)
+            ?assert(length(Workers2) =:= Def_w)
     end.
 
 
@@ -382,7 +383,7 @@ ensure_down_messages_when_checking_out({{_, _, _Watcher_pid, Pool_pid}, {_, _Wor
             after 10 -> ?assert(false)
             end,
             
-            receive {'DOWN', Mref, _, Pool_Pid, _} -> ?assert(true)
+            receive {'DOWN', Mref, _, _Pool_Pid, _} -> ?assert(true)
             after 10 -> ?assert(false)
             end
     end.
