@@ -1,6 +1,6 @@
 {application, workforce,
  [{description, "Workforce - A pool manager to get you on the management track"},
-  {vsn, "0.1.0"},
+  {vsn, "0.1.1"},
   {registered, []},
   {applications,
    [kernel,
