@@ -252,7 +252,7 @@ ___
 
 The workforce_watcher is responsible for starting workers. Right now it's not a supervisor so a worker that repeatedly crashes will go unnoticed, meaning it won't trigger a supervisor failure. This might change in the future if requested.
 
-It calls apply(M, F, A) and doesn't link by default to the worker, only monitors it. On an controlled shutdown it will tell all workers to exit with `shutdown`, and the same when an extra worker is to be removed. You probably want to use a linking start for your workers so they go down in the event the watcher goes down.
+It calls apply(M, F, A) and always links to the worker. On an controlled shutdown it will tell all workers to exit with `shutdown`, and the same when an extra worker is to be removed.
 
 ___
 #### Asynchronous Example in a gen_server
@@ -331,7 +331,7 @@ This is a fairly contrived example, because there's no reason to be async, but t
 ___
 #### Benchmarks
 
-There's some comparisons with poolboy in the `benchmarking` folder, [Read](/benchmarking/README.md), and also the module used to run them. If you want to run them yourself you'll need to create a folder, copy all modules from /src into it, add the poolboy modules and then you can try it out from an erl shell. I'll try to checkout other pooler implementations to compare and add there.
+There's some comparisons with poolboy in the `benchmarking` folder, [Read](/benchmarking/README.md), and also the module used to run them. If you want to run them yourself you'll need to create a folder, copy all modules from /src into it, add the poolboy modules and then you can try it out from an erl shell. I'll try to checkout other pooler implementations to compare and add there. Those benchmarks were done with the first version that had an overload timeout of 50ms. In the meanwhile it was reduced and it's now faster but I haven't redone them.
 
 ___
 #### TODO
