@@ -44,4 +44,4 @@
 -type async_checkout_resp() :: reference() | no_such_pool().
 
 -type checkout_resp() :: {ok, pid()} | {error, checkout_error()}.
--type remote_resp() :: checkout_resp().
+-type remote_resp() :: checkout_resp() | no_return().

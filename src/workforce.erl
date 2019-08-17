@@ -62,6 +62,9 @@
          async_confirm/2,
          
          checkin/2,
+
+         synchronous_checkin/2,
+         synchronous_checkin/3,
          
          state_as_map/1
 ]).
@@ -81,9 +84,15 @@
               remote_resp/0
 ]).
 
-state_as_map(Pid) ->
+state_as_map(Pid) when is_pid(Pid) ->
     {State, Q_pool} = sys:get_state(Pid),
-    maps:put(state, State, ?Rec2Map(q_pool, Q_pool)).
+    maps:put(state, State, ?Rec2Map(q_pool, Q_pool));
+
+state_as_map(Name) ->
+    case get_pid(Name) of
+        undefined -> {error, {no_such_pool, Name}};
+        Pid -> state_as_map(Pid)
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%% API
@@ -152,7 +161,7 @@ remote_checkout(Name, Timeout, force)  ->
 %%%%%% On an enqueued message you will then further receive either a successful {Mref, Pid} (when is_pid(Pid)) or {'DOWN', Mref, _, Pid, Reason} if the pool goes down while in transit.
 %%%%%% You will only receive an enqueued message either if you force adding the request to the queue or if you configured the pool to have a waiting queue > 0 (or unbound) and there was space in the queue, otherwise you will only receive one of overloaded, a pid or a down message.
 %%%%%% You need to aknowledge the receptance of the checkout after receiving the worker pid.
-%%%%%% Due to it being asynchronous you might still receive a checkout after you cancel the request, in this case you should checkin the pid back yourself or with will be out of the pool until the caller dies.
+%%%%%% Due to it being asynchronous you might still receive a checkout after you cancel the request, in this case you should checkin the pid back yourself or it will be out of the pool until the caller dies.
 
 -spec async_checkout(Pid_or_name :: name())-> async_checkout_resp().
 -spec async_checkout(Pid_or_name :: name(), ForceEnqueue :: boolean())-> async_checkout_resp().
@@ -216,7 +225,7 @@ async_cancel(Name, Mref) ->
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%% Check-in
 
--spec checkin(Pid_or_name :: name(), Worker :: pid())-> Resp :: ok | {Error :: no_such_pool, What :: term()}.
+-spec checkin(Pid_or_name :: name(), Worker :: pid())-> Resp :: ok | {error, no_such_pool()}.
 checkin(Pid, Worker) when is_pid(Pid) ->
     gen_statem:cast(Pid, {checkin, Worker});
 
@@ -224,6 +233,23 @@ checkin(Name, Worker) ->
     case get_pid(Name) of
         undefined -> {error, {no_such_pool, Name}};
         Pid -> gen_statem:cast(Pid, {checkin, Worker})
+    end.
+
+%%%%%% Synchronous Check-in
+
+-spec synchronous_checkin(Pid_or_name :: name(), Worker :: pid())-> Resp :: ok | {error, no_such_pool()} | no_return().
+-spec synchronous_checkin(Pid_or_name :: name(), Worker :: pid(), Timeout :: timeout())-> Resp :: ok | {error, no_such_pool()} | no_return().
+
+synchronous_checkin(Pid, Worker)->
+    synchronous_checkin(Pid, Worker, 5000).
+
+synchronous_checkin(Pid, Worker, Timeout) when is_pid(Pid) ->
+    gen_statem:call(Pid, {checkin, Worker}, {dirty_timeout, Timeout});
+
+synchronous_checkin(Name, Worker, Timeout) ->
+    case get_pid(Name) of
+        undefined -> {error, {no_such_pool, Name}};
+        Pid -> gen_statem:call(Pid, {checkin, Worker}, {dirty_timeout, Timeout})
     end.
     
 
@@ -469,6 +495,12 @@ handle_event(cast, {checkin, Pid}, _, #q_pool{checked_out = Cout} = CTX) when is
 
 handle_event(cast, {checkin, _}, _, _) -> {keep_state_and_data, []};
 
+%%%%%% synchronous_checkin
+
+handle_event({call, From}, {checkin, Pid}, _, #q_pool{checked_out = Cout} = CTX) when is_map_key(Pid, Cout) ->
+    {next_state, ready, return_worker(CTX, Pid), [{reply, From, ok}, {next_event, internal, dequeue}]};
+
+handle_event({call, From}, {checkin, _}, _, _) -> {keep_state_and_data, [{reply, From, ok}]};
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%% requester acks & cancel events
