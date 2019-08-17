@@ -231,7 +231,7 @@ If you don't call async_cancel you need to demonitor it yourself after receiving
     
 If you receive `{reference(), enqueued}` this means you will eventually either receive another `{reference(), Pid}` when your time reaches in the queue, or `{'DOWN'......}` if the pooler dies in the meanwhile.
     
-___    
+___
 > workforce:checkin/2
 
 ```
@@ -241,6 +241,19 @@ ___
     
     ok
 ```
+
+___
+> workforce:synchronous_checkin/2
+
+```
+    (Pid_or_name, Worker :: pid(), Timeout :: timeout() - defaults to 5000)
+    
+    %possible results
+    
+    ok | {error, no_such_pool()} | no_return()
+```
+
+`checkin/2` does a cast while `synchronous_checkin/2,3` does a call. This can be useful if you want to implement the logic for checkin on the worker process itself (e.g. after doing wtv it checks itself in) since there you can use an `infinity` timeout and it will either succeed or raise, meaning the worker gets back to the pool or dies (subsequently starting another one if needed).
 
 ___
 #### Queues
