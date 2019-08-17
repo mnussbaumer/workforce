@@ -3,15 +3,23 @@
 
 -include("workforce_shared.hrl").
 
--export([start_link/1, init/1, terminate/2, handle_continue/2, handle_call/3, handle_info/2, handle_cast/2]).
+-export([
+         start_link/1,
+         init/1,
+         terminate/2,
 
--import(workforce_supervisor, [workforce_config/0]).
+         handle_continue/2,
+         handle_call/3,
+         handle_info/2,
+         handle_cast/2
+]).
 
 -record(state, {
                 worker = nil :: {atom(), atom(), [any()]} | nil,
                 monitors = #{} :: map()
                }
-       ).
+).
+
 
 -spec start_link(Config :: workforce_config()) -> {ok, pid()} | {error, term()}.
 start_link(#{watcher_name := Name} = Config) ->

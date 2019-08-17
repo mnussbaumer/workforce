@@ -76,13 +76,16 @@ workforce_test_() ->
        fun ensure_workers_are_not_placed_again_in_pool_if_dead_while_checked_out/1,
        fun ensure_down_messages_when_checking_out/1,
        fun ensure_remote_checkouts_overload/1,
+       fun ensure_synchronous_checkins/1,
+       fun ensure_multiple_checkins_dont_add_extra_workers/1,
        fun ensure_coverage_paths/1
       ]
      },
      {"Pool grows and shrinks", fun ensure_pool_grows_and_shrinks/0},
      {"Queueing Works", fun ensure_queue_works/0},
      {"Starting Supervisor with MFA Works", fun ensure_supervisor_starts_w_mfa/0},
-     {"Faulty workers still get totally working", fun ensure_faulty_starts/0}
+     {"Faulty workers still get totally working", fun ensure_faulty_starts/0},
+     {"Timers for extra worker removal are canceled no matter what", fun ensure_timers_cancel/0}
     ].
 
 
@@ -396,7 +399,28 @@ ensure_remote_checkouts_overload({{_, _, _Watcher_pid, Pool_pid}, {_, Worker1, _
             ?assertMatch([{Pool_pid, 1}], ets:lookup(Ets, Pool_pid))
     end.
 
-ensure_coverage_paths({{_, _, _, _}, {_, Worker1, _Worker2}})->
+ensure_synchronous_checkins({{_, _, _, Pool_pid}, {_, Worker1, Worker2}}) ->
+    fun()->
+            ok = workforce:synchronous_checkin(Pool_pid, Worker1),
+            {ok, _} = wait_state_ready(Pool_pid, [{p_count, 1}]),
+            ok = workforce:synchronous_checkin(Pool_pid, Worker2),
+            {ok, #{pool := P}} = wait_state_ready(Pool_pid, [{p_count, 2}]),
+            ?assert(queue:member(Worker1, P) and queue:member(Worker2, P))
+    end.
+
+ensure_multiple_checkins_dont_add_extra_workers({{_, _, _Watcher_pid, Pool_pid}, {_, Worker1, Worker2}}) ->
+    fun()->
+            ok = workforce:synchronous_checkin(Pool_pid, Worker1),
+            {ok, _} = wait_state_ready(Pool_pid, [{p_count, 1}]),
+            ok = workforce:synchronous_checkin(Pool_pid, Worker2),
+            {ok, _} = wait_state_ready(Pool_pid, [{p_count, 2}]),
+            ok = workforce:synchronous_checkin(Pool_pid, Worker2),
+            ok = workforce:synchronous_checkin(Pool_pid, Worker1),
+            {ok, Worker1} = workforce:checkout(Pool_pid),
+            {ok, _} = wait_state_ready(Pool_pid, [{p_count, 1}])
+    end.
+
+ensure_coverage_paths({{_, _, _, _}, {_, Worker1, Worker2}})->
     fun() ->
             ?assertMatch({error, overloaded}, workforce:checkout(?POOL_NAME)),
             ?assertMatch({error, {no_such_pool, inexistent}}, workforce:checkout(inexistent)),
@@ -438,7 +462,8 @@ ensure_coverage_paths({{_, _, _, _}, {_, Worker1, _Worker2}})->
             end,                    
             
             ?assertMatch({error, {no_such_pool, inexistent}}, workforce:async_cancel(inexistent, Mref4)),
-            workforce:async_cancel(?POOL_NAME, Mref4)
+            workforce:async_cancel(?POOL_NAME, Mref4),
+            ok = workforce:synchronous_checkin(?POOL_NAME, Worker2)
     end.
 
 ensure_pool_grows_and_shrinks()->
@@ -566,6 +591,40 @@ ensure_faulty_starts() ->
     Pool_pid = whereis(element(2, Pool)),
     ?assertMatch({ok, #{default_w := Def_w}}, wait_state_ready(Pool_pid, [{default_w, Def_w}]), 500),
     do_tear_down(Sup_pid).
+
+ensure_timers_cancel() ->
+    Config = maps:merge(?CONFIG, #{default_workers => 0, max_workers => 1, shrink_timeout => 100, worker => ?WORKER}),
+    {ok, Sup_pid} = workforce_supervisor:start_link(Config),
+    Pool_pid = whereis(element(2, ?POOL_NAME)),
+
+    ?assertMatch({ok, _}, wait_state_ready(Pool_pid, [{default_w, 0}, {max_w, 1}, {active, 0}, {state, ready}])),
+
+    erlang:trace_pattern({gen_statem, loop, 3}, [{['$1', '$2', '$3'], [], [{return_trace}]}], [local]),
+    erlang:trace(Pool_pid, true, [call]),
+
+    {ok, Worker1} = workforce:checkout(Pool_pid),
+    ?assertMatch({ok, _}, wait_state_ready(Pool_pid, [{active, 1}, {p_count, 0}])),
+
+    receive {trace, Pool_pid, _, {_, _, [_, _, {state, _, _, {Timeouts, _}, _}]}} -> 
+            ?assert(maps:size(Timeouts) =:= 1),
+            exit(Worker1, kill),
+            wait_until(fun() -> not is_process_alive(Worker1) end)
+    after 100 -> ?assert(false)
+    end,
+    
+    ?assertMatch({ok, _}, wait_state_ready(Pool_pid, [{active, 0}, {state, ready}])),
+    ?assertMatch(true, 
+                 wait_until(fun() ->
+                                    receive {trace, Pool_pid, _, {_, _, [_, _, {state, _, _, {Timeouts2, _}, _}]}} -> 
+                                            maps:size(Timeouts2) =:= 0
+
+                                    after 200 -> false
+                                    end
+                            end, 200)
+                ),
+
+    do_tear_down(Sup_pid).
+            
     
 
 %%%%%%%%%%%%%%%%%%%%%%%%

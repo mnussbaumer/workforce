@@ -231,7 +231,7 @@ If you don't call async_cancel you need to demonitor it yourself after receiving
     
 If you receive `{reference(), enqueued}` this means you will eventually either receive another `{reference(), Pid}` when your time reaches in the queue, or `{'DOWN'......}` if the pooler dies in the meanwhile.
     
-___    
+___
 > workforce:checkin/2
 
 ```
@@ -243,6 +243,19 @@ ___
 ```
 
 ___
+> workforce:synchronous_checkin/2
+
+```
+    (Pid_or_name, Worker :: pid(), Timeout :: timeout() - defaults to 5000)
+    
+    %possible results
+    
+    ok | {error, no_such_pool()} | no_return()
+```
+
+`checkin/2` does a cast while `synchronous_checkin/2,3` does a call. This can be useful if you want to implement the logic for checkin on the worker process itself (e.g. after doing wtv it checks itself in) since there you can use an `infinity` timeout and it will either succeed or raise, meaning the worker gets back to the pool or dies (subsequently starting another one if needed).
+
+___
 #### Queues
 
 The max_queue value should be used reasonably, usually a low number equal to the number of workers tends to improve the performance, while an unbound queue or a large queue might slow it down if the timeouts are short relative to its size and the average time a worker remains checked out. It all depends though and you should benchmark your particular scenarios to see if it improves or worsens. You can always force specific requests to be enqueued when checking out even if the queue is set to 0, the same if it's not set to 0 but full already, a forced checkout will always enqueue no matter what. This means you can have a queue for certain "regular" requests that is respected by these requests and then always force some specific requests to be enqueued.
@@ -252,7 +265,7 @@ ___
 
 The workforce_watcher is responsible for starting workers. Right now it's not a supervisor so a worker that repeatedly crashes will go unnoticed, meaning it won't trigger a supervisor failure. This might change in the future if requested.
 
-It calls apply(M, F, A) and doesn't link by default to the worker, only monitors it. On an controlled shutdown it will tell all workers to exit with `shutdown`, and the same when an extra worker is to be removed. You probably want to use a linking start for your workers so they go down in the event the watcher goes down.
+It calls apply(M, F, A) and always links to the worker. On an controlled shutdown it will tell all workers to exit with `shutdown`, and the same when an extra worker is to be removed.
 
 ___
 #### Asynchronous Example in a gen_server
@@ -331,7 +344,7 @@ This is a fairly contrived example, because there's no reason to be async, but t
 ___
 #### Benchmarks
 
-There's some comparisons with poolboy in the `benchmarking` folder, [Read](/benchmarking/README.md), and also the module used to run them. If you want to run them yourself you'll need to create a folder, copy all modules from /src into it, add the poolboy modules and then you can try it out from an erl shell. I'll try to checkout other pooler implementations to compare and add there.
+There's some comparisons with poolboy in the `benchmarking` folder, [Read](/benchmarking/README.md), and also the module used to run them. If you want to run them yourself you'll need to create a folder, copy all modules from /src into it, add the poolboy modules and then you can try it out from an erl shell. I'll try to checkout other pooler implementations to compare and add there. Those benchmarks were done with the first version that had an overload timeout of 50ms. In the meanwhile it was reduced and it's now faster but I haven't redone them.
 
 ___
 #### TODO
@@ -342,11 +355,15 @@ ___
 
 ![Cocktail Logo](https://github.com/mnussbaumer/workforce/blob/master/logo/cocktail_logo.png?raw=true "Cocktail Logo")
 
+[© rooster image in the cocktail logo](https://commons.wikimedia.org/wiki/User:LadyofHats)
+
 ```
 Copyright [2019] [Micael Nussbaumer]
 
 Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
+you may not use the files contained in this library except in 
+compliance with the License.
+
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
